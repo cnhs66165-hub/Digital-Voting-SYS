@@ -28,6 +28,8 @@ const positions=[
 let candidates = {};
 let archive = JSON.parse(localStorage.getItem("archive")) || [];
 let votes = {}, user = "";
+let currentUser = { lrn: "", name: "", email: "" }; // track logged-in voter
+let activeRecords = []; // cached Active Records list for admin dashboard
 
 // Track if Firebase candidates have loaded
 let candidatesReady = false;
@@ -149,17 +151,29 @@ function registerUser() {
 }
 
 function login(){
- user = elements.userInput.value.trim();
- if(!user) return alert("Enter LRN");
+ const lrn = elements.userInput.value.trim();
+ if(!lrn) return alert("Enter LRN");
+ 
+ // Save to global currentUser object and old user variable (backward compatibility)
+ currentUser.lrn = lrn;
+ user = lrn;
  
  // First check if user is registered
- db.collection("registrations").doc(user).get().then(doc => {
+ db.collection("registrations").doc(lrn).get().then(doc => {
   if (!doc.exists) {
+    currentUser = { lrn: "", name: "", email: "" };
+    user = "";
     return alert("LRN not found. Please register first via the Sign Up tab.");
   }
 
+  const registration = doc.data();
+  currentUser.name = registration.name || "";
+  currentUser.email = registration.email || "";
+
+  console.log("✅ login() currentUser:", currentUser);
+
   // Check if already voted
-  db.collection("votes").doc(user).get().then(voteDoc => {
+  db.collection("votes").doc(currentUser.lrn).get().then(voteDoc => {
     if (voteDoc.exists) return alert("Already voted");
     
     hideAll();
@@ -215,27 +229,41 @@ function adminLogin(){
  try{ elements.adminUser.value=''; }catch(e){}
 }
 
-function loadAdmin(){
- // 🔥 Real-time sync of all votes from Firebase
- db.collection("votes").onSnapshot(snapshot => {
+function loadRecords(){
+ // Real-time sync of votes in descending order by time (latest first).
+ db.collection("votes").orderBy("time", "desc").onSnapshot(snapshot => {
   const records = [];
   snapshot.forEach(doc => {
     const data = doc.data();
-    records.push({ user: doc.id, ...data });
+    const record = {
+      user: data.lrn || doc.id,
+      lrn: data.lrn || doc.id,
+      name: data.name || "",
+      email: data.email || "",
+      votes: data.votes || {},
+      time: formatTime(data.time)
+    };
+    records.push(record);
   });
-  
-  // Render records if the records panel is visible
-  if (!document.getElementById("recordPanel")?.classList.contains("hidden")) {
-   renderTable(records, elements.recordsTable);
+
+  activeRecords = records;
+
+  // Keep UI instant when admin opens the records tab.
+  if (!document.getElementById("recordPanel").classList.contains("hidden")) {
+    renderTable(activeRecords, elements.recordsTable);
   }
-  
-  // Render totals (always update)
-  renderTotals(records);
+
+  renderTotals(activeRecords);
  }, error => {
    console.error("❌ Error loading votes:", error);
  });
- 
- // Render archived records
+}
+
+function loadAdmin(){
+ // Kick off the real-time records subscription (if not already running)
+ loadRecords();
+
+ // Render archived records (static local archive storage)
  if (elements.archiveTable) {
    renderTable(archive, elements.archiveTable);
  }
@@ -643,18 +671,30 @@ function pick(p,i,el){
 }
 
 function submitVote(){
- db.collection("registrations").doc(user).get().then(doc => {
+ // Validate LRN before saving
+ if(!currentUser.lrn) {
+   return alert("Unable to submit: LRN is missing. Please login first.");
+ }
+ 
+ db.collection("registrations").doc(currentUser.lrn).get().then(doc => {
   const registration = doc.exists ? doc.data() : { name: "", email: "" };
 
+  // Keep user metadata in currentUser in sync
+  currentUser.name = registration.name || currentUser.name || "";
+  currentUser.email = registration.email || currentUser.email || "";
+
   const voteData = {
-    user,
-    name: registration.name,
-    email: registration.email,
+    lrn: currentUser.lrn,
+    name: currentUser.name,
+    email: currentUser.email,
     votes: { ...votes },
-    time: new Date().toLocaleString()
+    // use server timestamp for correct ordering and consistency
+    time: firebase.firestore.FieldValue.serverTimestamp()
   };
 
-  db.collection("votes").doc(user).set(voteData).then(() => {
+  // Save to votes collection with lrn and vote details
+  console.log("✅ submitVote() voteData:", voteData);
+  db.collection("votes").doc(currentUser.lrn).set(voteData, { merge: true }).then(() => {
     elements.summaryTable.querySelector("tbody").innerHTML="";
     for(let p in votes){
       elements.summaryTable.querySelector("tbody").innerHTML+=
@@ -666,6 +706,9 @@ function submitVote(){
 
     hideAll();
     elements.summaryBox.classList.remove("hidden");
+  }).catch(err => {
+    console.error("❌ Failed to save vote:", err);
+    alert("Unable to submit vote. Please try again.");
   });
  });
 }
@@ -676,6 +719,15 @@ function createQrText(votes){
   text += `${position}: ${votes[position]}\n`;
  }
  return text.trim();
+}
+
+// Normalize Firestore timestamp or string time for UI display
+function formatTime(time){
+ if(!time) return "";
+ if(time instanceof firebase.firestore.Timestamp) return time.toDate().toLocaleString();
+ if(typeof time === "string") return time;
+ if(time.toDate) return time.toDate().toLocaleString();
+ return new Date(time).toLocaleString();
 }
 
 function sendVoteConfirmationEmail(registration){
@@ -754,6 +806,8 @@ function openAdminTab(id){
  document.querySelectorAll(".admin-panel").forEach(p=>p.classList.add("hidden"));
  document.getElementById(id).classList.remove("hidden");
  if(id==='editorPanel') loadEditor();
+ if(id==='recordPanel') renderTable(activeRecords, elements.recordsTable);
+ if(id==='totalPanelWrap') renderTotals(activeRecords);
 }
 
 function logout(){location.reload()}
