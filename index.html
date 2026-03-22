@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CNHS | Digital Voting System</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+</head>
+<body>
+
+<div class="layout-wrapper">
+  <aside class="sidebar glass">
+    <div class="sidebar-brand">
+      <img src="images/cnhs.jpg" class="side-logo">
+      <p>CNHS Voting</p>
+    </div>
+    <nav class="side-nav">
+      <div class="side-item" onclick="openMain('signup')">
+        <button class="circle-btn side-btn" style="background:linear-gradient(135deg, #8b5cf6, #6d28d9);">📝</button>
+        <span>Sign Up</span>
+      </div>
+      <div class="side-item" onclick="openMain('login')">
+        <button class="circle-btn side-btn">🗳️</button>
+        <span>Voter</span>
+      </div>
+      <div class="side-item" onclick="openMain('devOnly')">
+        <button class="circle-btn side-btn">👨‍💻</button>
+        <span>Developer</span>
+      </div>
+    </nav>
+  </aside>
+
+  <div class="container">
+    <div class="header glass">
+      <div class="school-logos">
+        <img src="images/cnhs.jpg" class="logo left">
+      </div>
+      <h1>Concepcion National High School<br>Digital Voting System</h1>
+      <span class="badge">Secure • Auto Save • Official</span>
+      <button id="moreBtn" class="three-dot" onclick="openMain('adminLogin')" aria-label="More">⋯</button>
+    </div>
+
+    <div id="signup" class="card hidden animate">
+      <h2>Voter Registration</h2>
+      <input id="regName" placeholder="Full Name" autocomplete="off" spellcheck="false" autocapitalize="off">
+      <input id="regEmail" type="email" placeholder="Email (example@gmail.com)" autocomplete="off" spellcheck="false" autocapitalize="off">
+      <input id="regLrn" type="number" placeholder="11-12 Digit LRN" autocomplete="off" inputmode="numeric" spellcheck="false" autocapitalize="off">
+      <div class="btn-row">
+        <button class="secondary" onclick="registerUser()">Register</button>
+        <button class="danger" onclick="goBack()">close</button>
+      </div>
+    </div>
+
+    <div id="login" class="card hidden animate">
+      <h2>Voter Login</h2>
+      <input id="user" placeholder="Enter LRN (11-12 digits)" autocomplete="off" inputmode="numeric" spellcheck="false" autocapitalize="off">
+      <div class="btn-row">
+        <button onclick="login()">Proceed</button>
+        <button class="secondary" onclick="goBack()">close</button>
+      </div>
+    </div>
+
+    <div id="adminLogin" class="card hidden animate">
+      <h2>Admin Login</h2>
+      <input id="adminUser" placeholder="Admin Username" autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off">
+      <input id="adminPass" type="password" placeholder="Password" autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off">
+      <div class="btn-row">
+        <button onclick="adminLogin()">Login</button>
+        <button class="secondary" onclick="goBack()">close</button>
+      </div>
+    </div>
+
+    <div id="admin" class="card hidden animate">
+      <div class="topbar">
+        <h2>Admin Dashboard</h2>
+      </div>
+      <div class="circle-nav">
+        <div class="circle-wrap">
+          <button class="circle-btn" onclick="openEditor()">🧑‍💼</button>
+          <span>Editor</span>
+        </div>
+        <div class="circle-wrap">
+          <button class="circle-btn" onclick="openAdminTab('totalPanelWrap')">📊</button>
+          <span>Totals</span>
+        </div>
+        <div class="circle-wrap">
+          <button class="circle-btn" onclick="openAdminTab('recordPanel')">📁</button>
+          <span>Records</span>
+        </div>
+        <div class="circle-wrap">
+          <button class="circle-btn" onclick="openAdminTab('archivePanel')">🗄️</button>
+          <span>Archive</span>
+        </div>
+        <div class="circle-wrap">
+          <button class="circle-btn" onclick="openAdminTab('devPanel')">👨‍💻</button>
+          <span>Developers</span>
+        </div>
+      </div>
+      <div class="close-button-wrapper">
+        <button class="secondary" onclick="goBack()">close</button>
+      </div>
+      <div id="editorPanel" class="admin-panel">
+        <div id="editorContent"></div>
+        <div class="btn-row no-print">
+          <button class="secondary" onclick="printCandidates()">🖨️ Print All Candidates</button>
+        </div>
+      </div>
+      <div id="totalPanelWrap" class="admin-panel hidden">
+        <h3>Total Votes</h3>
+        <div id="totalPanel" class="total-panel"></div>
+        <div class="btn-row no-print">
+          <button class="secondary" onclick="printTotals()">Print Totals</button>
+        </div>
+      </div>
+      <div id="recordPanel" class="admin-panel hidden">
+        <h3>Active Records</h3>
+        <table id="recordsTable">
+          <thead><tr><th>LRN</th><th>Name</th><th>Email</th><th>Votes</th><th>Time</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="btn-row no-print">
+          <button class="secondary" onclick="printRecords()">Print Records</button>
+          <button class="danger" onclick="clearAndArchive()">Clear & Archive</button>
+        </div>
+      </div>
+      <div id="archivePanel" class="admin-panel hidden">
+        <h3>Archive Storage Room</h3>
+        <table id="archiveTable">
+          <thead><tr><th>LRN</th><th>Name</th><th>Email</th><th>Votes</th><th>Time</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="btn-row no-print">
+          <button class="secondary" onclick="printArchive()">Print Archive</button>
+        </div>
+      </div>
+      <div id="devPanel" class="admin-panel hidden">
+        <div class="dev-grid">
+          <div class="dev-card"><img src="images/jeriel.jpg"><b>Jeriel</b></div>
+          <div class="dev-card"><img src="images/era.jpg"><b>Era</b></div>
+          <div class="dev-card"><img src="images/cj.jpg"><b>CJ</b></div>
+          <div class="dev-card"><img src="images/axzil.jpg"><b>Axzil</b></div>
+          <div class="dev-card"><img src="images/johndhel.jpg"><b>Johndhel</b></div>
+          <div class="dev-card"><img src="images/joven.jpg"><b>Joven</b></div>
+          <div class="dev-card"><img src="images/sundrex.jpg"><b>Sundrex</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="voting" class="card hidden animate">
+      <h2>Voting Form</h2>
+      <div id="voteArea"></div>
+      <div class="btn-row">
+        <button onclick="submitVote()">Submit Vote</button>
+      </div>
+    </div>
+
+    <div id="summaryBox" class="card hidden animate">
+      <h2>Voting Receipt</h2>
+      <div id="printableVotes" class="printable-area">
+        <h3>Your Votes</h3>
+        <table id="summaryTable">
+          <thead><tr><th>Position</th><th>Candidate</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="qrCode"></div>
+      </div>
+      <div class="btn-row no-print">
+        <button class="secondary" onclick="printReceipt()">🖨️ Print Receipt</button>
+        <button onclick="logout()">Logout</button>
+      </div>
+    </div>
+
+    <div id="devOnly" class="card hidden animate">
+      <h2>Developer Panel</h2>
+      <div id="devPanelClone"></div>
+      <div class="close-button-wrapper">
+        <button class="secondary" onclick="goBack()">close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
